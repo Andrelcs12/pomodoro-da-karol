@@ -8,7 +8,6 @@ import {
   Clock3,
   Download,
   FileUp,
-  Minus,
   Pause,
   Play,
   Plus,
@@ -18,8 +17,8 @@ import {
   TimerReset,
   Trash2,
 } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BrandMark } from "@/components/brand-mark";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -60,10 +59,12 @@ import {
   getTodaySessions,
   getTotalStudyTime,
   getWeekSessions,
+  isLightColor,
   localDay,
   MIN_SESSION_SECONDS,
   makeId,
   normalizeName,
+  normalizeSettings,
   type PersistedTimer,
   readStorage,
   type Settings,
@@ -108,10 +109,14 @@ export default function PomodoroApp() {
   const [filter, setFilter] = useState("Todas");
   const [pending, setPending] = useState<Pending>(null);
   const [celebrate, setCelebrate] = useState(false);
+  const [showMoreDurations, setShowMoreDurations] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const storedSettings = readStorage(STORAGE_KEYS.settings, DEFAULT_SETTINGS);
+    const storedSettings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      ...readStorage(STORAGE_KEYS.settings, DEFAULT_SETTINGS),
+    });
     const storedTimer = readStorage(
       STORAGE_KEYS.timer,
       defaultTimer(storedSettings),
@@ -134,10 +139,76 @@ export default function PomodoroApp() {
       writeStorage(STORAGE_KEYS.settings, settings);
       document.documentElement.dataset.theme = settings.theme;
       document.documentElement.style.setProperty("--accent", settings.accent);
+      const accentForeground = getAccentForeground(settings.accent);
       document.documentElement.style.setProperty(
         "--accent-foreground",
-        getAccentForeground(settings.accent),
+        accentForeground,
       );
+      document.documentElement.style.setProperty(
+        "--primary-foreground",
+        accentForeground,
+      );
+      if (settings.backgroundColor) {
+        const lightBackground = isLightColor(settings.backgroundColor);
+        const tokens = lightBackground
+          ? {
+              "--foreground": "#302a3a",
+              "--card": "#ffffff",
+              "--card-foreground": "#302a3a",
+              "--popover": "#ffffff",
+              "--popover-foreground": "#302a3a",
+              "--secondary": "#f2eef7",
+              "--secondary-foreground": "#41394e",
+              "--muted": "#f4f0f6",
+              "--muted-foreground": "#756d7f",
+              "--border": "#e8e2eb",
+              "--input": "#e2dbe7",
+              "--accent-soft": "color-mix(in srgb, var(--accent) 12%, #fff)",
+              "--accent-border": "color-mix(in srgb, var(--accent) 27%, #fff)",
+            }
+          : {
+              "--foreground": "#f4eff6",
+              "--card": "#28222f",
+              "--card-foreground": "#f4eff6",
+              "--popover": "#28222f",
+              "--popover-foreground": "#f4eff6",
+              "--secondary": "#352d3e",
+              "--secondary-foreground": "#f4eff6",
+              "--muted": "#302938",
+              "--muted-foreground": "#b6adbd",
+              "--border": "#423848",
+              "--input": "#463b4d",
+              "--accent-soft": "color-mix(in srgb, var(--accent) 20%, #24202b)",
+              "--accent-border":
+                "color-mix(in srgb, var(--accent) 40%, #24202b)",
+            };
+        document.documentElement.style.setProperty(
+          "--background",
+          settings.backgroundColor,
+        );
+        Object.entries(tokens).forEach(([token, value]) => {
+          document.documentElement.style.setProperty(token, value);
+        });
+      } else {
+        [
+          "--background",
+          "--foreground",
+          "--card",
+          "--card-foreground",
+          "--popover",
+          "--popover-foreground",
+          "--secondary",
+          "--secondary-foreground",
+          "--muted",
+          "--muted-foreground",
+          "--border",
+          "--input",
+          "--accent-soft",
+          "--accent-border",
+        ].forEach((token) => {
+          document.documentElement.style.removeProperty(token);
+        });
+      }
     }
   }, [ready, settings]);
   useEffect(() => {
@@ -376,10 +447,14 @@ export default function PomodoroApp() {
           !Array.isArray(data.sessions)
         )
           throw new Error();
-        setSettings(data.settings || DEFAULT_SETTINGS);
+        const importedSettings = normalizeSettings({
+          ...DEFAULT_SETTINGS,
+          ...(data.settings || {}),
+        });
+        setSettings(importedSettings);
         setSubjects(data.subjects);
         setSessions(data.sessions);
-        setTimer(defaultTimer(data.settings || DEFAULT_SETTINGS));
+        setTimer(defaultTimer(importedSettings));
       } catch {
         window.alert(
           "Arquivo inválido. Escolha uma exportação do Pomodoro da Karolzinha.",
@@ -419,7 +494,14 @@ export default function PomodoroApp() {
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.35 }}
         >
-          <BrandMark className="brand-mark" />
+          <Image
+            className="brand-mark"
+            src="/brand/karol-mark.png"
+            alt="Marca da Karolzinha"
+            width={72}
+            height={72}
+            priority
+          />
           <strong>Pomodoro da Karolzinha</strong>
           <p>Preparando seu foco…</p>
         </motion.div>
@@ -456,17 +538,22 @@ export default function PomodoroApp() {
           </motion.div>
         )}
       </AnimatePresence>
-      <header>
+      <header className="app-header">
         <div className="brand-lockup">
-          <BrandMark className="header-mark" />
-          <div>
-            <h1>Pomodoro da Karolzinha</h1>
-            <p className="eyebrow">ENEM · 2026</p>
-          </div>
+          <Image
+            className="header-logo"
+            src="/brand/karol-logo.png"
+            alt="Pomodoro da Karolzinha"
+            width={280}
+            height={94}
+            priority
+          />
+          <p className="eyebrow">ENEM · 2026</p>
         </div>
         <Button
           variant="outline"
           size="icon"
+          className="header-settings"
           onClick={() => setSettingsOpen(true)}
           aria-label="Configurações"
         >
@@ -529,7 +616,45 @@ export default function PomodoroApp() {
                     {minutes} min
                   </Button>
                 ))}
+                <Button
+                  variant={
+                    [90, 120, 150, 180].includes(timer.plannedSeconds / 60) &&
+                    !timer.isRunning
+                      ? "secondary"
+                      : "ghost"
+                  }
+                  size="sm"
+                  onClick={() => setShowMoreDurations((open) => !open)}
+                  disabled={timer.isRunning}
+                >
+                  {[90, 120, 150, 180].includes(timer.plannedSeconds / 60)
+                    ? `${timer.plannedSeconds / 60} min`
+                    : "Mais"}
+                </Button>
               </div>
+              {showMoreDurations && (
+                <div className="duration-extra-row">
+                  {[90, 120, 150, 180].map((minutes) => (
+                    <Button
+                      key={minutes}
+                      variant={
+                        timer.plannedSeconds === minutes * 60 &&
+                        !timer.isRunning
+                          ? "secondary"
+                          : "ghost"
+                      }
+                      size="sm"
+                      onClick={() => {
+                        reset("focus", minutes * 60);
+                        setShowMoreDurations(false);
+                      }}
+                      disabled={timer.isRunning}
+                    >
+                      {minutes} min
+                    </Button>
+                  ))}
+                </div>
+              )}
             </>
           )}
           <motion.div
@@ -604,12 +729,14 @@ export default function PomodoroApp() {
           <Card className="today-card">
             <CardContent>
               <span>Hoje</span>
-              <strong>
-                {formatDuration(getTotalStudyTime(today))} estudados
-              </strong>
-              <small>
-                {today.length} {today.length === 1 ? "sessão" : "sessões"}
-              </small>
+              <div className="today-stats">
+                <strong>
+                  {formatDuration(getTotalStudyTime(today))} estudados
+                </strong>
+                <small>
+                  {today.length} {today.length === 1 ? "sessão" : "sessões"}
+                </small>
+              </div>
             </CardContent>
           </Card>
         </section>
@@ -825,166 +952,229 @@ export default function PomodoroApp() {
             <SheetTitle>Configurações</SheetTitle>
           </SheetHeader>
           <div className="settings">
-            <section className="settings-group">
-              <p>APARÊNCIA</p>
-              <span className="setting-label">Tema</span>
-              <Select
-                value={settings.theme}
-                onValueChange={(theme) =>
-                  setSettings((old) => ({
-                    ...old,
-                    theme: theme as Settings["theme"],
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="system">Automático</SelectItem>
-                  <SelectItem value="light">Claro</SelectItem>
-                  <SelectItem value="dark">Escuro</SelectItem>
-                </SelectContent>
-              </Select>
-              <span className="setting-label">Cor</span>
-              <div className="accent-presets">
-                {["#7c6ee6", "#d86694", "#4b83d3", "#4f9d78", "#dc9866"].map(
-                  (color) => (
+            <Card className="settings-card">
+              <CardContent className="settings-group">
+                <p>APARÊNCIA</p>
+                <span className="setting-label">Tema</span>
+                <Select
+                  value={settings.theme}
+                  onValueChange={(theme) =>
+                    setSettings((old) => ({
+                      ...old,
+                      theme: theme as Settings["theme"],
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="system">Automático</SelectItem>
+                    <SelectItem value="light">Claro</SelectItem>
+                    <SelectItem value="dark">Escuro</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="setting-label">Cor principal</span>
+                <div className="accent-presets">
+                  {["#7c6ee6", "#d86694", "#4b83d3", "#4f9d78", "#dc9866"].map(
+                    (color) => (
+                      <Button
+                        key={color}
+                        variant="ghost"
+                        size="icon"
+                        className={
+                          settings.accent === color
+                            ? "accent-option selected"
+                            : "accent-option"
+                        }
+                        style={{ backgroundColor: color }}
+                        onClick={() =>
+                          setSettings((old) => ({ ...old, accent: color }))
+                        }
+                        aria-label={`Usar cor ${color}`}
+                      >
+                        {settings.accent === color && <Check />}
+                      </Button>
+                    ),
+                  )}
+                  <label className="custom-accent" title="Cor personalizada">
+                    <Plus size={16} />
+                    <input
+                      aria-label="Escolher cor personalizada"
+                      type="color"
+                      value={settings.accent}
+                      onChange={(event) =>
+                        setSettings((old) => ({
+                          ...old,
+                          accent: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+                <span className="setting-label">Fundo</span>
+                <div className="background-presets">
+                  {[
+                    null,
+                    "#fff3f8",
+                    "#eef5ff",
+                    "#eef8f0",
+                    "#fff5e9",
+                    "#211b2a",
+                  ].map((color, index) => (
                     <Button
-                      key={color}
+                      key={color ?? "default"}
                       variant="ghost"
                       size="icon"
                       className={
-                        settings.accent === color
-                          ? "accent-option selected"
-                          : "accent-option"
+                        settings.backgroundColor === color
+                          ? "background-option selected"
+                          : "background-option"
                       }
-                      style={{ backgroundColor: color }}
+                      style={{
+                        background:
+                          color ??
+                          "linear-gradient(135deg, #fff 50%, #28222f 50%)",
+                      }}
                       onClick={() =>
-                        setSettings((old) => ({ ...old, accent: color }))
+                        setSettings((old) => ({
+                          ...old,
+                          backgroundColor: color,
+                        }))
                       }
-                      aria-label={`Usar cor ${color}`}
+                      aria-label={
+                        index === 0
+                          ? "Usar fundo do tema"
+                          : `Usar fundo ${color}`
+                      }
                     >
-                      {settings.accent === color && <Check />}
+                      {settings.backgroundColor === color && <Check />}
                     </Button>
-                  ),
-                )}
-                <label className="custom-accent" title="Cor personalizada">
-                  <Plus size={16} />
-                  <input
-                    aria-label="Escolher cor personalizada"
-                    type="color"
-                    value={settings.accent}
-                    onChange={(event) =>
-                      setSettings((old) => ({
-                        ...old,
-                        accent: event.target.value,
-                      }))
+                  ))}
+                  <label className="custom-accent" title="Fundo personalizado">
+                    <Plus size={16} />
+                    <input
+                      aria-label="Escolher fundo personalizado"
+                      type="color"
+                      value={settings.backgroundColor ?? "#fcfaff"}
+                      onChange={(event) =>
+                        setSettings((old) => ({
+                          ...old,
+                          backgroundColor: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+                <span className="setting-label">Prévia</span>
+                <div className="theme-preview">
+                  <span>Pomodoro da Karolzinha</span>
+                  <small>Matemática</small>
+                  <strong>25:00</strong>
+                  <i>Começar</i>
+                </div>
+              </CardContent>
+            </Card>
+            <Separator />
+            <Card className="settings-card">
+              <CardContent className="settings-group">
+                <p>POMODORO</p>
+                {(
+                  [
+                    ["Foco", "focusMinutes", 5, 180],
+                    ["Pausa curta", "shortBreakMinutes", 5, 60],
+                    ["Pausa longa", "longBreakMinutes", 5, 90],
+                  ] as const
+                ).map(([label, field, min, max]) => (
+                  <div className="stepper" key={field}>
+                    <span>{label}</span>
+                    <Select
+                      value={String(settings[field])}
+                      onValueChange={(value) =>
+                        setSettings((old) => ({
+                          ...old,
+                          [field]: Number(value),
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="duration-select">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent position="popper">
+                        {Array.from(
+                          { length: (max - min) / 5 + 1 },
+                          (_, index) => min + index * 5,
+                        ).map((minutes) => (
+                          <SelectItem key={minutes} value={String(minutes)}>
+                            {minutes} min
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+            <Separator />
+            <Card className="settings-card">
+              <CardContent className="settings-group">
+                <p>PREFERÊNCIAS</p>
+                <div className="setting-switch">
+                  <span>Iniciar próximo bloco automaticamente</span>
+                  <Switch
+                    checked={settings.autoStart}
+                    onCheckedChange={(autoStart) =>
+                      setSettings((old) => ({ ...old, autoStart }))
                     }
                   />
-                </label>
-              </div>
-            </section>
-            <Separator />
-            <section className="settings-group">
-              <p>POMODORO</p>
-              {(
-                [
-                  ["Foco (min)", "focusMinutes", 180],
-                  ["Pausa curta (min)", "shortBreakMinutes", 60],
-                  ["Pausa longa (min)", "longBreakMinutes", 90],
-                ] as const
-              ).map(([label, field, max]) => (
-                <div className="stepper" key={field}>
-                  <span>{label}</span>
-                  <div>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      aria-label={`Diminuir ${label}`}
-                      onClick={() =>
-                        setSettings((old) => ({
-                          ...old,
-                          [field]: Math.max(1, old[field] - 1),
-                        }))
-                      }
-                    >
-                      <Minus />
-                    </Button>
-                    <strong>{settings[field]} min</strong>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      aria-label={`Aumentar ${label}`}
-                      onClick={() =>
-                        setSettings((old) => ({
-                          ...old,
-                          [field]: Math.min(max, old[field] + 1),
-                        }))
-                      }
-                    >
-                      <Plus />
-                    </Button>
-                  </div>
                 </div>
-              ))}
-            </section>
+                <div className="setting-switch">
+                  <span>Som ao terminar</span>
+                  <Switch
+                    checked={settings.sound}
+                    onCheckedChange={(sound) =>
+                      setSettings((old) => ({ ...old, sound }))
+                    }
+                  />
+                </div>
+              </CardContent>
+            </Card>
             <Separator />
-            <section className="settings-group">
-              <p>PREFERÊNCIAS</p>
-              <div className="setting-switch">
-                <span>Iniciar próximo bloco automaticamente</span>
-                <Switch
-                  checked={settings.autoStart}
-                  onCheckedChange={(autoStart) =>
-                    setSettings((old) => ({ ...old, autoStart }))
-                  }
+            <Card className="settings-card">
+              <CardContent className="settings-group data-actions">
+                <p>DADOS</p>
+                <Button variant="outline" onClick={exportData}>
+                  <Download /> Exportar meus dados
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <FileUp /> Importar dados
+                </Button>
+                <input
+                  ref={fileRef}
+                  className="hidden"
+                  type="file"
+                  accept="application/json"
+                  onChange={(event) => importData(event.target.files?.[0])}
                 />
-              </div>
-              <div className="setting-switch">
-                <span>Som ao terminar</span>
-                <Switch
-                  checked={settings.sound}
-                  onCheckedChange={(sound) =>
-                    setSettings((old) => ({ ...old, sound }))
-                  }
-                />
-              </div>
-            </section>
-            <Separator />
-            <section className="settings-group data-actions">
-              <p>DADOS</p>
-              <Button variant="outline" onClick={exportData}>
-                <Download /> Exportar meus dados
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => fileRef.current?.click()}
-              >
-                <FileUp /> Importar dados
-              </Button>
-              <input
-                ref={fileRef}
-                className="hidden"
-                type="file"
-                accept="application/json"
-                onChange={(event) => importData(event.target.files?.[0])}
-              />
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      "Limpar todo o histórico de estudos? Esta ação não pode ser desfeita.",
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        "Limpar todo o histórico de estudos? Esta ação não pode ser desfeita.",
+                      )
                     )
-                  )
-                    setSessions([]);
-                }}
-              >
-                <Trash2 /> Limpar histórico
-              </Button>
-              <small>Seus dados ficam somente neste navegador.</small>
-            </section>
+                      setSessions([]);
+                  }}
+                >
+                  <Trash2 /> Limpar histórico
+                </Button>
+                <small>Seus dados ficam somente neste navegador.</small>
+              </CardContent>
+            </Card>
           </div>
         </SheetContent>
       </Sheet>

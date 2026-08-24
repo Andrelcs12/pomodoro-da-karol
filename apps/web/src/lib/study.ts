@@ -21,6 +21,7 @@ export type StudySession = {
 export type Settings = {
   theme: "light" | "dark" | "system";
   accent: string;
+  backgroundColor: string | null;
   sound: boolean;
   focusMinutes: number;
   shortBreakMinutes: number;
@@ -86,6 +87,7 @@ export const DEFAULT_SUBJECTS: Subject[] = subjectNames.map((name, index) => ({
 export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   accent: "#7c6ee6",
+  backgroundColor: null,
   sound: true,
   focusMinutes: 25,
   shortBreakMinutes: 5,
@@ -93,6 +95,23 @@ export const DEFAULT_SETTINGS: Settings = {
   cyclesUntilLongBreak: 4,
   autoStart: false,
 };
+export function normalizeMinutes(
+  value: number,
+  minimum: number,
+  maximum: number,
+  fallback: number,
+) {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(maximum, Math.max(minimum, Math.round(value / 5) * 5));
+}
+export function normalizeSettings(settings: Settings): Settings {
+  return {
+    ...settings,
+    focusMinutes: normalizeMinutes(settings.focusMinutes, 5, 180, 25),
+    shortBreakMinutes: normalizeMinutes(settings.shortBreakMinutes, 5, 60, 5),
+    longBreakMinutes: normalizeMinutes(settings.longBreakMinutes, 5, 90, 15),
+  };
+}
 export const defaultTimer = (settings: Settings): PersistedTimer => ({
   mode: "focus",
   subjectId: DEFAULT_SUBJECTS[0].id,
@@ -138,6 +157,14 @@ export function getAccentForeground(color: string) {
   return red * 0.299 + green * 0.587 + blue * 0.114 > 165
     ? "#302a3a"
     : "#ffffff";
+}
+export function isLightColor(color: string) {
+  const hex = color.replace("#", "");
+  if (hex.length !== 6) return true;
+  const [red, green, blue] = [0, 2, 4].map((index) =>
+    Number.parseInt(hex.slice(index, index + 2), 16),
+  );
+  return red * 0.299 + green * 0.587 + blue * 0.114 > 165;
 }
 export function formatDuration(seconds: number) {
   const mins = Math.max(0, Math.round(seconds / 60));
