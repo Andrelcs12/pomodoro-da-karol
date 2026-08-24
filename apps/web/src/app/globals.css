@@ -258,7 +258,7 @@ button {
   box-shadow: 0 12px 32px #2c20380e;
 }
 .timer-card .p-6 {
-  padding: 30px 21px 20px;
+  padding: 28px 21px 20px;
 }
 .timer-subject {
   margin: 0;
@@ -267,15 +267,53 @@ button {
   font-weight: 750;
 }
 .clock {
-  margin: 10px 0 5px;
-  font-size: clamp(4rem, 19vw, 6.7rem);
+  font-size: clamp(2.7rem, 11vw, 3.8rem);
   line-height: 1;
-  font-weight: 320;
-  letter-spacing: -0.1em;
+  font-weight: 350;
+  letter-spacing: -0.075em;
   font-variant-numeric: tabular-nums;
 }
+.timer-ring {
+  position: relative;
+  display: grid;
+  width: min(100%, 278px);
+  aspect-ratio: 1;
+  place-items: center;
+  margin: 16px auto 19px;
+}
+.timer-ring svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform: rotate(-90deg);
+}
+.timer-ring-track,
+.timer-ring-progress {
+  fill: none;
+  stroke-width: 5;
+}
+.timer-ring-track {
+  stroke: var(--muted);
+}
+.timer-ring-progress {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-dasharray: 282.743;
+  filter: drop-shadow(
+    0 3px 5px color-mix(in srgb, var(--accent) 30%, transparent)
+  );
+}
+.timer-ring-content {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 9px;
+  padding: 34px;
+}
 .timer-status {
-  margin: 0 0 21px;
+  margin: 0;
   color: var(--muted-foreground);
   font-size: 0.83rem;
 }

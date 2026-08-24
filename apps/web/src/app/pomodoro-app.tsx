@@ -75,6 +75,10 @@ import {
   weeklyDays,
   writeStorage,
 } from "@/lib/study";
+import {
+  getStudyMessage,
+  type StudyMessageState,
+} from "@/lib/study-message";
 
 type View = "focus" | "progress";
 type Pending = "end" | "restart" | "skip" | null;
@@ -83,13 +87,7 @@ const modeData: { id: TimerMode; label: string }[] = [
   { id: "shortBreak", label: "Pausa" },
   { id: "longBreak", label: "Longa" },
 ];
-const phrase = (subject: string) =>
-  ({
-    Matemática: "Bora de matemática, Karolzinha.",
-    Redação: "Agora é só você e a redação.",
-    Biologia: "Mais um pouco de biologia e depois descansa.",
-  })[subject] ||
-  `Um bloco de cada vez, Karolzinha. Hoje é dia de ${subject.toLowerCase()}.`;
+const TIMER_CIRCUMFERENCE = 2 * Math.PI * 45;
 
 export default function PomodoroApp() {
   const [ready, setReady] = useState(false);
@@ -110,7 +108,13 @@ export default function PomodoroApp() {
   const [pending, setPending] = useState<Pending>(null);
   const [celebrate, setCelebrate] = useState(false);
   const [showMoreDurations, setShowMoreDurations] = useState(false);
+  const [studyMessage, setStudyMessage] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const messageMilestones = useRef({ halfway: false, almostDone: false });
+  const timerProgress = Math.min(
+    1,
+    Math.max(0, timer.remainingSeconds / timer.plannedSeconds),
+  );
 
   useEffect(() => {
     const storedSettings = normalizeSettings({
@@ -260,6 +264,7 @@ export default function PomodoroApp() {
         { ...source, elapsedFocusSeconds: source.plannedSeconds },
         "completed",
       );
+      setMessageFor("completed", source, source.plannedSeconds);
       beep();
       setCelebrate(true);
       window.setTimeout(() => setCelebrate(false), 1800);
@@ -316,7 +321,29 @@ export default function PomodoroApp() {
           isRunning: false,
           endTime: null,
         });
-      else
+      else {
+        if (source.mode === "focus") {
+          const progress = 1 - remaining / source.plannedSeconds;
+          if (progress >= 0.5 && !messageMilestones.current.halfway) {
+            messageMilestones.current.halfway = true;
+            setMessageFor("halfway", {
+              ...source,
+              remainingSeconds: remaining,
+              elapsedFocusSeconds: elapsed,
+            });
+          } else if (
+            remaining <= 300 &&
+            source.plannedSeconds > 300 &&
+            !messageMilestones.current.almostDone
+          ) {
+            messageMilestones.current.almostDone = true;
+            setMessageFor("almostDone", {
+              ...source,
+              remainingSeconds: remaining,
+              elapsedFocusSeconds: elapsed,
+            });
+          }
+        }
         setTimer((previous) =>
           previous.isRunning
             ? {
@@ -326,6 +353,7 @@ export default function PomodoroApp() {
               }
             : previous,
         );
+      }
     };
     tick();
     const interval = window.setInterval(tick, 1000);
@@ -340,6 +368,8 @@ export default function PomodoroApp() {
         : mode === "shortBreak"
           ? settings.shortBreakMinutes * 60
           : settings.longBreakMinutes * 60);
+    if (mode === "focus")
+      messageMilestones.current = { halfway: false, almostDone: false };
     setTimer((previous) => ({
       ...previous,
       mode,
@@ -351,7 +381,15 @@ export default function PomodoroApp() {
       sessionStartedAt: null,
     }));
   };
-  const toggle = () =>
+  const toggle = () => {
+    if (timer.mode === "focus")
+      setMessageFor(
+        timer.isRunning
+          ? "paused"
+          : timer.elapsedFocusSeconds > 0
+            ? "resumed"
+            : "started",
+      );
     setTimer((previous) =>
       previous.isRunning
         ? { ...previous, isRunning: false, endTime: null }
@@ -363,8 +401,9 @@ export default function PomodoroApp() {
               previous.mode === "focus" && !previous.sessionStartedAt
                 ? new Date().toISOString()
                 : previous.sessionStartedAt,
-          },
+        },
     );
+  };
   const request = (action: Exclude<Pending, null>) =>
     timer.mode === "focus" && timer.elapsedFocusSeconds >= MIN_SESSION_SECONDS
       ? setPending(action)
@@ -373,7 +412,10 @@ export default function PomodoroApp() {
         : reset(timer.mode, timer.plannedSeconds);
   const resolvePending = (save: boolean) => {
     const source = timerRef.current;
-    if (save) record(source, "interrupted");
+    if (save) {
+      record(source, "interrupted");
+      setMessageFor("interrupted", source);
+    }
     if (pending === "skip")
       advance({ ...source, isRunning: false, endTime: null });
     else if (pending === "end") reset("focus");
@@ -485,6 +527,34 @@ export default function PomodoroApp() {
       }, {}),
     [filter, sessions],
   );
+  const setMessageFor = (
+    state: StudyMessageState,
+    source: PersistedTimer = timer,
+    actualSeconds = source.elapsedFocusSeconds,
+  ) => {
+    setStudyMessage(
+      getStudyMessage({
+        subjectName: source.subjectName || "Seu estudo",
+        plannedMinutes: Math.round(source.plannedSeconds / 60),
+        remainingSeconds: source.remainingSeconds,
+        progress:
+          source.plannedSeconds > 0
+            ? 1 - source.remainingSeconds / source.plannedSeconds
+            : 0,
+        todayStudySeconds: getTotalStudyTime(today),
+        todaySessions: today.length,
+        weekStudySeconds: getTotalStudyTime(week),
+        state,
+        actualSeconds,
+      }),
+    );
+  };
+  useEffect(() => {
+    if (!ready) return;
+    setMessageFor("idle");
+    // A mensagem de entrada só depende da hidratação; o restante muda por eventos do timer.
+    // biome-ignore lint/correctness/useExhaustiveDependencies: não atualizar a mensagem a cada tick é intencional.
+  }, [ready]);
   if (!ready || showSplash)
     return (
       <main className="loading brand-loading">
@@ -610,7 +680,15 @@ export default function PomodoroApp() {
                         : "ghost"
                     }
                     size="sm"
-                    onClick={() => reset("focus", minutes * 60)}
+                    onClick={() => {
+                      const seconds = minutes * 60;
+                      reset("focus", seconds);
+                      setMessageFor("idle", {
+                        ...timer,
+                        remainingSeconds: seconds,
+                        plannedSeconds: seconds,
+                      });
+                    }}
                     disabled={timer.isRunning}
                   >
                     {minutes} min
@@ -645,7 +723,13 @@ export default function PomodoroApp() {
                       }
                       size="sm"
                       onClick={() => {
-                        reset("focus", minutes * 60);
+                        const seconds = minutes * 60;
+                        reset("focus", seconds);
+                        setMessageFor("idle", {
+                          ...timer,
+                          remainingSeconds: seconds,
+                          plannedSeconds: seconds,
+                        });
                         setShowMoreDurations(false);
                       }}
                       disabled={timer.isRunning}
@@ -670,16 +754,50 @@ export default function PomodoroApp() {
                       ? "Pausa curta"
                       : "Pausa longa"}
                 </p>
-                <div className="clock">
-                  {formatClock(timer.remainingSeconds)}
-                </div>
-                <p className="timer-status">
-                  {timer.isRunning
-                    ? timer.mode === "focus"
-                      ? "Em foco"
-                      : "Descansando"
-                    : "Pronta para começar"}
-                </p>
+                <motion.div
+                  className="timer-ring"
+                  animate={
+                    timer.isRunning ? { scale: [1, 1.018, 1] } : { scale: 1 }
+                  }
+                  transition={
+                    timer.isRunning
+                      ? { duration: 2.4, repeat: Infinity, ease: "easeInOut" }
+                      : { duration: 0.2 }
+                  }
+                >
+                  <svg viewBox="0 0 100 100" aria-hidden="true">
+                    <circle
+                      className="timer-ring-track"
+                      cx="50"
+                      cy="50"
+                      r="45"
+                    />
+                    <motion.circle
+                      className="timer-ring-progress"
+                      cx="50"
+                      cy="50"
+                      r="45"
+                      initial={false}
+                      animate={{
+                        strokeDashoffset:
+                          TIMER_CIRCUMFERENCE * (1 - timerProgress),
+                      }}
+                      transition={{ duration: 0.7, ease: "easeOut" }}
+                    />
+                  </svg>
+                  <div className="timer-ring-content">
+                    <div className="clock">
+                      {formatClock(timer.remainingSeconds)}
+                    </div>
+                    <p className="timer-status">
+                      {timer.isRunning
+                        ? timer.mode === "focus"
+                          ? "Em foco"
+                          : "Descansando"
+                        : "Pronta para começar"}
+                    </p>
+                  </div>
+                </motion.div>
                 <Button className="start-button" size="lg" onClick={toggle}>
                   {timer.isRunning ? <Pause /> : <Play fill="currentColor" />}{" "}
                   {timer.isRunning
@@ -717,15 +835,18 @@ export default function PomodoroApp() {
               </CardContent>
             </Card>
           </motion.div>
-          <motion.p
-            className="phrase"
-            animate={{ y: timer.isRunning ? [0, -2, 0] : 0 }}
-            transition={{ repeat: Infinity, duration: 2.5 }}
-          >
-            {timer.mode === "focus"
-              ? phrase(timer.subjectName || "seu estudo")
-              : "Respira, toma uma água e volta quando estiver pronta."}
-          </motion.p>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.p
+              key={studyMessage}
+              className="phrase"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -3 }}
+              transition={{ duration: 0.2 }}
+            >
+              {studyMessage}
+            </motion.p>
+          </AnimatePresence>
           <Card className="today-card">
             <CardContent>
               <span>Hoje</span>
