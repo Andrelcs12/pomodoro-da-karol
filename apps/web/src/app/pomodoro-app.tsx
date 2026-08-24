@@ -20,6 +20,10 @@ import {
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  StudyCompanion,
+  type StudyCompanionState,
+} from "@/components/study-companion";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -75,10 +79,7 @@ import {
   weeklyDays,
   writeStorage,
 } from "@/lib/study";
-import {
-  getStudyMessage,
-  type StudyMessageState,
-} from "@/lib/study-message";
+import { getStudyMessage, type StudyMessageState } from "@/lib/study-message";
 
 type View = "focus" | "progress";
 type Pending = "end" | "restart" | "skip" | null;
@@ -115,6 +116,15 @@ export default function PomodoroApp() {
     1,
     Math.max(0, timer.remainingSeconds / timer.plannedSeconds),
   );
+  const companionState: StudyCompanionState = celebrate
+    ? "completed"
+    : timer.mode !== "focus"
+      ? "resting"
+      : timer.isRunning
+        ? "focus"
+        : timer.elapsedFocusSeconds > 0
+          ? "paused"
+          : "idle";
 
   useEffect(() => {
     const storedSettings = normalizeSettings({
@@ -125,10 +135,34 @@ export default function PomodoroApp() {
       STORAGE_KEYS.timer,
       defaultTimer(storedSettings),
     );
+    const storedSessions = readStorage<StudySession[]>(
+      STORAGE_KEYS.sessions,
+      [],
+    );
+    const storedToday = getTodaySessions(storedSessions);
     setSettings(storedSettings);
     setSubjects(readStorage(STORAGE_KEYS.subjects, DEFAULT_SUBJECTS));
-    setSessions(readStorage(STORAGE_KEYS.sessions, []));
+    setSessions(storedSessions);
     setTimer(storedTimer);
+    setStudyMessage(
+      getStudyMessage({
+        subjectName: storedTimer.subjectName || "Seu estudo",
+        plannedMinutes: Math.round(storedTimer.plannedSeconds / 60),
+        remainingSeconds: storedTimer.remainingSeconds,
+        progress:
+          storedTimer.plannedSeconds > 0
+            ? 1 - storedTimer.remainingSeconds / storedTimer.plannedSeconds
+            : 0,
+        todayStudySeconds: getTotalStudyTime(storedToday),
+        todaySessions: storedToday.length,
+        weekStudySeconds: getTotalStudyTime(getWeekSessions(storedSessions)),
+        state: storedTimer.isRunning
+          ? "resumed"
+          : storedTimer.elapsedFocusSeconds > 0
+            ? "paused"
+            : "idle",
+      }),
+    );
     timerRef.current = storedTimer;
     setReady(true);
     const splashTimer = window.setTimeout(() => setShowSplash(false), 850);
@@ -222,6 +256,30 @@ export default function PomodoroApp() {
     if (ready) writeStorage(STORAGE_KEYS.sessions, sessions);
   }, [ready, sessions]);
 
+  function setMessageFor(
+    state: StudyMessageState,
+    source: PersistedTimer = timer,
+    actualSeconds = source.elapsedFocusSeconds,
+  ) {
+    const currentToday = getTodaySessions(sessions);
+    const currentWeek = getWeekSessions(sessions);
+    setStudyMessage(
+      getStudyMessage({
+        subjectName: source.subjectName || "Seu estudo",
+        plannedMinutes: Math.round(source.plannedSeconds / 60),
+        remainingSeconds: source.remainingSeconds,
+        progress:
+          source.plannedSeconds > 0
+            ? 1 - source.remainingSeconds / source.plannedSeconds
+            : 0,
+        todayStudySeconds: getTotalStudyTime(currentToday),
+        todaySessions: currentToday.length,
+        weekStudySeconds: getTotalStudyTime(currentWeek),
+        state,
+        actualSeconds,
+      }),
+    );
+  }
   const record = (
     source: PersistedTimer,
     status: "completed" | "interrupted",
@@ -283,6 +341,8 @@ export default function PomodoroApp() {
         : nextMode === "shortBreak"
           ? settings.shortBreakMinutes * 60
           : settings.longBreakMinutes * 60;
+    if (nextMode === "focus")
+      messageMilestones.current = { halfway: false, almostDone: false };
     setTimer({
       ...source,
       mode: nextMode,
@@ -401,7 +461,7 @@ export default function PomodoroApp() {
               previous.mode === "focus" && !previous.sessionStartedAt
                 ? new Date().toISOString()
                 : previous.sessionStartedAt,
-        },
+          },
     );
   };
   const request = (action: Exclude<Pending, null>) =>
@@ -440,6 +500,11 @@ export default function PomodoroApp() {
     else {
       const subject = { id: makeId(), name, color: "#9a7ad8" };
       setSubjects((items) => [...items, subject]);
+      setMessageFor("idle", {
+        ...timer,
+        subjectId: subject.id,
+        subjectName: subject.name,
+      });
       setTimer((item) => ({
         ...item,
         subjectId: subject.id,
@@ -527,34 +592,6 @@ export default function PomodoroApp() {
       }, {}),
     [filter, sessions],
   );
-  const setMessageFor = (
-    state: StudyMessageState,
-    source: PersistedTimer = timer,
-    actualSeconds = source.elapsedFocusSeconds,
-  ) => {
-    setStudyMessage(
-      getStudyMessage({
-        subjectName: source.subjectName || "Seu estudo",
-        plannedMinutes: Math.round(source.plannedSeconds / 60),
-        remainingSeconds: source.remainingSeconds,
-        progress:
-          source.plannedSeconds > 0
-            ? 1 - source.remainingSeconds / source.plannedSeconds
-            : 0,
-        todayStudySeconds: getTotalStudyTime(today),
-        todaySessions: today.length,
-        weekStudySeconds: getTotalStudyTime(week),
-        state,
-        actualSeconds,
-      }),
-    );
-  };
-  useEffect(() => {
-    if (!ready) return;
-    setMessageFor("idle");
-    // A mensagem de entrada só depende da hidratação; o restante muda por eventos do timer.
-    // biome-ignore lint/correctness/useExhaustiveDependencies: não atualizar a mensagem a cada tick é intencional.
-  }, [ready]);
   if (!ready || showSplash)
     return (
       <main className="loading brand-loading">
@@ -806,6 +843,7 @@ export default function PomodoroApp() {
                       ? "Começar"
                       : "Continuar"}
                 </Button>
+                <StudyCompanion state={companionState} />
                 <div className="timer-actions">
                   <Button
                     variant="ghost"
@@ -1007,6 +1045,11 @@ export default function PomodoroApp() {
                   variant="ghost"
                   className="subject-option"
                   onClick={() => {
+                    setMessageFor("idle", {
+                      ...timer,
+                      subjectId: subject.id,
+                      subjectName: subject.name,
+                    });
                     setTimer((old) => ({
                       ...old,
                       subjectId: subject.id,

@@ -43,7 +43,9 @@ function timeGreeting() {
 function pick(messages: string[]) {
   const options = messages.filter((message) => message !== lastMessage);
   const message = (options.length ? options : messages)[
-    Math.floor(Math.random() * (options.length ? options.length : messages.length))
+    Math.floor(
+      Math.random() * (options.length ? options.length : messages.length),
+    )
   ];
   lastMessage = message;
   return message;
@@ -104,11 +106,7 @@ export function getStudyMessage(context: StudyMessageContext) {
       "Já passou da metade, Karolzinha.",
       "Agora falta menos do que você já fez.",
     ],
-    almostDone: [
-      "Últimos 5 minutos.",
-      "Tá acabando.",
-      "Só mais um pouquinho.",
-    ],
+    almostDone: ["Últimos 5 minutos.", "Tá acabando.", "Só mais um pouquinho."],
     completed: [
       `Mais ${actualMinutes} min de ${subject} na conta.`,
       `Fechou ${actualMinutes} min. Mandou bem.`,

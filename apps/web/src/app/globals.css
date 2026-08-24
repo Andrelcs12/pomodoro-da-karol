@@ -345,6 +345,68 @@ button {
   width: 14px;
   height: 14px;
 }
+.study-companion {
+  width: clamp(112px, 34vw, 160px);
+  margin: 18px auto 4px;
+  color: var(--foreground);
+}
+.study-companion svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.companion-desk {
+  fill: var(--card);
+  stroke: var(--border);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.companion-desk-line,
+.companion-book-page,
+.companion-smile,
+.companion-arm,
+.companion-pencil,
+.companion-pencil-tip,
+.companion-cup path {
+  fill: none;
+  stroke: var(--foreground);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.companion-book {
+  fill: var(--accent-soft);
+  stroke: var(--accent-border);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.companion-book-mark {
+  fill: var(--accent);
+  font-size: 8px;
+  font-weight: 800;
+}
+.companion-shirt,
+.companion-pencil {
+  fill: var(--accent);
+}
+.companion-face {
+  fill: #f1c6b0;
+  stroke: var(--foreground);
+  stroke-width: 1.5;
+}
+.companion-hair {
+  fill: #5b445a;
+}
+.companion-eye {
+  fill: var(--foreground);
+}
+.companion-cup {
+  fill: var(--card);
+  stroke: var(--foreground);
+  stroke-width: 2;
+  transition: opacity 0.2s ease;
+}
 .phrase {
   max-width: 330px;
   margin: 20px auto;
@@ -770,6 +832,10 @@ button {
   }
 }
 @media (max-width: 380px) {
+  .study-companion {
+    width: 108px;
+    margin-top: 15px;
+  }
   .today-stats {
     align-items: flex-start;
     flex-direction: column;
