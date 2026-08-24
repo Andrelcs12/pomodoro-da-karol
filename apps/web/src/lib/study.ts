@@ -129,6 +129,16 @@ export function normalizeName(name: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 }
+export function getAccentForeground(color: string) {
+  const hex = color.replace("#", "");
+  if (hex.length !== 6) return "#ffffff";
+  const [red, green, blue] = [0, 2, 4].map((index) =>
+    Number.parseInt(hex.slice(index, index + 2), 16),
+  );
+  return red * 0.299 + green * 0.587 + blue * 0.114 > 165
+    ? "#302a3a"
+    : "#ffffff";
+}
 export function formatDuration(seconds: number) {
   const mins = Math.max(0, Math.round(seconds / 60));
   const h = Math.floor(mins / 60);
